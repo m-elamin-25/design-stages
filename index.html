@@ -87,6 +87,7 @@
       <h1>أسئلة مراحل التصميم</h1>
       
     </div>
+    <div id="autoloadBanner" style="margin-top:8px"></div>
 
     <div class="toolbar">
       <div class="group stage-tabs" id="stageTabs"></div>
@@ -338,6 +339,75 @@
         if(num>=1 && num<=5){ activeStage = STAGES[num-1].key; renderAll(); }
       }
     });
-  </script>
+  
+// ===== Helpers for autoload banner & status =====
+function showBanner(type, msg){
+  const el = document.getElementById('autoloadBanner');
+  if(!el) return;
+  const color = type==='ok' ? '#065f46' : (type==='warn' ? '#92400e' : '#991b1b');
+  const bg = type==='ok' ? 'rgba(16,185,129,.08)' : (type==='warn' ? 'rgba(245,158,11,.08)' : 'rgba(239,68,68,.08)');
+  el.innerHTML = `<div style="border:1px solid ${color};background:${bg};color:${color};padding:8px 12px;border-radius:10px;font-size:13px">${msg}</div>`;
+}
+function clearBanner(){ const el=document.getElementById('autoloadBanner'); if(el) el.innerHTML=''; }
+function getQueryParam(name){ const u=new URL(window.location.href); return u.searchParams.get(name); }
+const IS_FILE_PROTOCOL = (window.location.protocol === 'file:');
+
+
+// ===== Auto-load questions JSON from same folder (GitHub Pages friendly) =====
+async function loadFromJSONAuto(){
+  const override = getQueryParam('data');
+  const candidates = override ? [override] : [
+    'design_stages_questions_FULL.json',
+    'design_stages_questions.json'
+  ];
+
+  if (IS_FILE_PROTOCOL) {
+    showBanner('warn','⚠️ تعمل الصفحة عبر file:// — قد يمنع المتصفح قراءة JSON محليًا. يُفضّل فتح الصفحة عبر http(s) مثل GitHub Pages.');
+  }
+
+  let incoming=null, lastErr=null;
+  for(const name of candidates){
+    try{
+      const url = new URL(name, window.location.href).toString();
+      const res = await fetch(url, {cache:'no-store'});
+      if(!res.ok){ lastErr=new Error('HTTP '+res.status); continue; }
+      incoming = await res.json();
+      clearBanner();
+      showBanner('ok','✔️ تم تحميل الأسئلة تلقائيًا من: <b>'+name+'</b>');
+      break;
+    }catch(e){ lastErr=e; }
+  }
+  if(!incoming){
+    showBanner('error','❌ تعذر تحميل ملف الأسئلة تلقائيًا. تأكّد أن الملف بجوار الصفحة بالاسم <b>design_stages_questions_FULL.json</b> أو استخدم ?data=filename.json'
+      + (lastErr?('<br><span class="muted">آخر خطأ: '+lastErr.message+'</span>') : ''));
+    return;
+  }
+
+  const keys = ['S10','S30','S60','S90','S100'];
+  const merged = {S10:[],S30:[],S60:[],S90:[],S100:[]};
+  try{
+    for(const k of keys){
+      const srcArr = Array.isArray(incoming[k]) ? incoming[k] : [];
+      merged[k] = srcArr.map(x=> ({
+        id: x.id || (x.stage||k)+'_'+Math.random().toString(36).slice(2,7),
+        stage: x.stage || k,
+        status: x.status || 'Pending',
+        note: '',
+        reason: '',
+        tags: Array.isArray(x.tags) ? x.tags : (x.tags ? String(x.tags).split(',').map(s=>s.trim()).filter(Boolean) : []),
+        text: x.text || ''
+      }));
+    }
+    // if app uses 'db', replace and render
+    if (typeof db !== 'undefined'){ db = merged; }
+    if (typeof saveLocal === 'function') try{ saveLocal(); }catch(e){}
+    if (typeof renderAll === 'function') try{ renderAll(); }catch(e){}
+    if (typeof window.renderList === 'function') try{ window.renderList(); }catch(e){}
+  }catch(e){
+    showBanner('error','❌ فشل دمج البيانات بعد التحميل: '+e.message);
+  }
+}
+
+</script>
 </body>
 </html>
